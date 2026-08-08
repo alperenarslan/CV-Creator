@@ -1,0 +1,16 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.env
+.env.local
+*.log
+.DS_Store
+Thumbs.db
+*.class
+* Cv.txt
+*_Cv.html
+*.pdf
+.vscode/
+.idea/
+.cursor/

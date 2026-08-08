@@ -311,7 +311,7 @@ public class CV_GUI extends javax.swing.JFrame {
         });
         jTextField5.addInputMethodListener(new java.awt.event.InputMethodListener() {
             public void inputMethodTextChanged(java.awt.event.InputMethodEvent evt) {
-                jTextField5İnputMethodTextChanged(evt);
+                jTextField5InputMethodTextChanged(evt);
             }
             public void caretPositionChanged(java.awt.event.InputMethodEvent evt) {
             }
@@ -1677,9 +1677,9 @@ public class CV_GUI extends javax.swing.JFrame {
         jTextField9.setForeground(Color.BLACK);
     }//GEN-LAST:event_jTextField9MouseClicked
 
-    private void jTextField5İnputMethodTextChanged(java.awt.event.InputMethodEvent evt) {//GEN-FIRST:event_jTextField5İnputMethodTextChanged
+    private void jTextField5InputMethodTextChanged(java.awt.event.InputMethodEvent evt) {//GEN-FIRST:event_jTextField5InputMethodTextChanged
         // TODO add your handling code here:
-    }//GEN-LAST:event_jTextField5İnputMethodTextChanged
+    }//GEN-LAST:event_jTextField5InputMethodTextChanged
 
     private void jTextField5KeyPressed(java.awt.event.KeyEvent evt) {//GEN-FIRST:event_jTextField5KeyPressed
         // TODO add your handling code here:
