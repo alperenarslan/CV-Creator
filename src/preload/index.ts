@@ -1,7 +1,21 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { IPC, type ElectronAPI } from "../shared/ipc";
+import {
+  IPC,
+  type AtsCheckRequest,
+  type CoverLetterRequest,
+  type ElectronAPI,
+  type ExportIcsRequest,
+  type PackageExportApiRequest,
+  type SnapshotSaveRequest,
+} from "../shared/ipc";
 import type { CVData } from "../shared/cv";
-import type { AnalyzeJobRequest } from "../shared/analysis";
+import type {
+  AdaptLanguageRequest,
+  AnalyzeJobRequest,
+  InterviewBankRequest,
+  KeywordRewriteRequest,
+  ShortCvRequest,
+} from "../shared/analysis";
 import type { AppPrefs, ImportEngine } from "../shared/prefs";
 import type { UpdateApplicationPatch } from "../shared/tracker";
 
@@ -13,6 +27,22 @@ const api: ElectronAPI = {
   exportHtml: (cv) => ipcRenderer.invoke(IPC.exportHtml, cv),
   exportPdf: (cv) => ipcRenderer.invoke(IPC.exportPdf, cv),
   analyzeJob: (payload: AnalyzeJobRequest) => ipcRenderer.invoke(IPC.analyzeJob, payload),
+  generateCoverLetter: (payload: CoverLetterRequest) =>
+    ipcRenderer.invoke(IPC.coverLetter, payload),
+  rewriteKeywords: (payload: KeywordRewriteRequest) =>
+    ipcRenderer.invoke(IPC.keywordRewrite, payload),
+  adaptLanguage: (payload: AdaptLanguageRequest) =>
+    ipcRenderer.invoke(IPC.adaptLanguage, payload),
+  shortenCv: (payload: ShortCvRequest) => ipcRenderer.invoke(IPC.shortCv, payload),
+  interviewBank: (payload: InterviewBankRequest) =>
+    ipcRenderer.invoke(IPC.interviewBank, payload),
+  runAtsCheck: (payload: AtsCheckRequest) => ipcRenderer.invoke(IPC.atsCheck, payload),
+  saveSnapshot: (payload: SnapshotSaveRequest) => ipcRenderer.invoke(IPC.saveSnapshot, payload),
+  loadSnapshot: (applicationId: string) => ipcRenderer.invoke(IPC.loadSnapshot, applicationId),
+  exportPackage: (payload: PackageExportApiRequest) =>
+    ipcRenderer.invoke(IPC.exportPackage, payload),
+  exportIcs: (payload: ExportIcsRequest) => ipcRenderer.invoke(IPC.exportIcs, payload),
+  openPath: (targetPath: string) => ipcRenderer.invoke(IPC.openPath, targetPath),
   hasGeminiKey: () => ipcRenderer.invoke(IPC.hasGeminiKey),
   setGeminiKey: (key: string) => ipcRenderer.invoke(IPC.setGeminiKey, key),
   loadPrefs: () => ipcRenderer.invoke(IPC.prefsLoad),

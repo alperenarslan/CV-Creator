@@ -1,9 +1,24 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
+import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import dotenv from "./dotenv";
-import { IPC } from "../shared/ipc";
+import {
+  IPC,
+  type AtsCheckRequest,
+  type CoverLetterRequest,
+  type ExportIcsRequest,
+  type PackageExportApiRequest,
+  type SnapshotSaveRequest,
+} from "../shared/ipc";
 import type { CVData } from "../shared/cv";
-import type { AnalyzeJobRequest } from "../shared/analysis";
+import type {
+  AdaptLanguageRequest,
+  AnalyzeJobRequest,
+  InterviewBankRequest,
+  KeywordRewriteRequest,
+  ShortCvRequest,
+} from "../shared/analysis";
 import type { AppPrefs, ImportEngine } from "../shared/prefs";
 import {
   getGeminiApiKey,
@@ -16,7 +31,13 @@ import {
 import { clearSessionGeminiApiKey } from "./geminiSession";
 import { exportHtml, exportPdf, exportTxt } from "./export";
 import { fetchJobText } from "./jobFetch";
-import { analyzeWithGemini } from "./gemini";
+import { analyzeWithGemini, rewriteKeywordsWithGemini } from "./gemini";
+import { adaptCvLanguage } from "./adaptLanguage";
+import { generateInterviewBank, shortenCvForJob } from "./shortCv";
+import { generateCoverLetter } from "./coverLetter";
+import { exportApplicationPackage } from "./packageExport";
+import { loadCvSnapshot, saveCvSnapshot } from "./snapshotStore";
+import { runAtsCheck } from "../shared/ats";
 import { launchLegacyApp } from "./legacy";
 import { importCVFromFile } from "./cvImport";
 import {
@@ -25,19 +46,33 @@ import {
   updateApplication,
   upsertFromAnalysis,
 } from "./applicationsStore";
-import type { UpdateApplicationPatch } from "../shared/tracker";
+import { buildInterviewIcs, collectLearnedKeywords, type UpdateApplicationPatch } from "../shared/tracker";
 
 dotenv();
 
 let mainWindow: BrowserWindow | null = null;
 
+function resolveAppIcon(): string | undefined {
+  const candidates = [
+    path.join(process.cwd(), "resources", "icon-256.png"),
+    path.join(process.cwd(), "resources", "icon.png"),
+    path.join(process.cwd(), "public", "icon.png"),
+    path.join(__dirname, "../../resources/icon-256.png"),
+    path.join(__dirname, "../../resources/icon.png"),
+    path.join(__dirname, "../../public/icon.png"),
+  ];
+  return candidates.find((p) => fs.existsSync(p));
+}
+
 function createWindow() {
+  const icon = resolveAppIcon();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
     minWidth: 720,
     minHeight: 640,
     title: "CV Creator",
+    ...(icon ? { icon } : {}),
     backgroundColor: loadPrefs().theme === "dark" ? "#0f171c" : "#e7eef2",
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
@@ -112,7 +147,11 @@ function registerIpc() {
         return { ok: false, error: "Job URL is required." };
       }
 
-      const analysis = await analyzeWithGemini(payload.cv, jobText);
+      const learned =
+        payload.learnedKeywords?.length
+          ? payload.learnedKeywords
+          : collectLearnedKeywords(loadApplications());
+      const analysis = await analyzeWithGemini(payload.cv, jobText, learned);
       const url = payload.url?.trim() || "manual://paste";
       const saved = upsertFromAnalysis({
         url,
@@ -122,6 +161,7 @@ function registerIpc() {
         summary: analysis.summary,
         strengths: analysis.strengths,
         missingKeywords: analysis.missingKeywords,
+        interviewTips: analysis.interviewTips,
       });
       return { ok: true, analysis, usedFallback, applicationId: saved.id };
     } catch (err) {
@@ -132,9 +172,149 @@ function registerIpc() {
     }
   });
 
+  ipcMain.handle(IPC.coverLetter, async (_e, payload: CoverLetterRequest) => {
+    try {
+      const draft = await generateCoverLetter({
+        cv: payload.cv,
+        analysis: payload.analysis,
+        tone: payload.tone,
+        locale: loadPrefs().locale,
+      });
+      if (payload.applicationId) {
+        updateApplication({
+          id: payload.applicationId,
+          coverLetter: draft.body,
+          coverSubject: draft.subject,
+        });
+      }
+      return { ok: true, subject: draft.subject, body: draft.body };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.keywordRewrite, async (_e, payload: KeywordRewriteRequest) => {
+    try {
+      const suggestions = await rewriteKeywordsWithGemini({
+        cv: payload.cv,
+        missingKeywords: payload.missingKeywords,
+        jobTitle: payload.jobTitle,
+        company: payload.company,
+      });
+      return { ok: true, suggestions };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.adaptLanguage, async (_e, payload: AdaptLanguageRequest) => {
+    try {
+      const draft = await adaptCvLanguage({
+        cv: payload.cv,
+        targetLocale: payload.targetLocale,
+        coverLetter: payload.coverLetter,
+        coverSubject: payload.coverSubject,
+      });
+      return {
+        ok: true,
+        cv: draft.cv,
+        coverLetter: draft.coverLetter,
+        coverSubject: draft.coverSubject,
+      };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.shortCv, async (_e, payload: ShortCvRequest) => {
+    try {
+      const cv = await shortenCvForJob({ cv: payload.cv, analysis: payload.analysis });
+      return { ok: true, cv };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.interviewBank, async (_e, payload: InterviewBankRequest) => {
+    try {
+      const questions = await generateInterviewBank({
+        cv: payload.cv,
+        analysis: payload.analysis,
+      });
+      return { ok: true, questions };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.atsCheck, (_e, payload: AtsCheckRequest) =>
+    runAtsCheck({
+      cv: payload.cv,
+      missingKeywords: payload.missingKeywords,
+      locale: loadPrefs().locale,
+    }),
+  );
+
+  ipcMain.handle(IPC.saveSnapshot, (_e, payload: SnapshotSaveRequest) => {
+    try {
+      saveCvSnapshot(payload.applicationId, payload.cv);
+      updateApplication({ id: payload.applicationId, hasSnapshot: true });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle(IPC.loadSnapshot, (_e, applicationId: string) => {
+    const cv = loadCvSnapshot(applicationId);
+    if (!cv) return { ok: false, error: "Snapshot not found" };
+    return { ok: true, cv };
+  });
+
+  ipcMain.handle(IPC.exportPackage, async (_e, payload: PackageExportApiRequest) => {
+    if (!mainWindow) return { ok: false, error: "No window" };
+    const result = await exportApplicationPackage(mainWindow, payload);
+    if (result.ok && result.folderPath && payload.applicationId) {
+      updateApplication({
+        id: payload.applicationId,
+        packageFolder: result.folderPath,
+      });
+    }
+    return result;
+  });
+
   ipcMain.handle(IPC.appsLoad, () => loadApplications());
   ipcMain.handle(IPC.appsUpdate, (_e, patch: UpdateApplicationPatch) => updateApplication(patch));
   ipcMain.handle(IPC.appsDelete, (_e, id: string) => ({ ok: deleteApplication(id) }));
+  ipcMain.handle(IPC.openPath, async (_e, targetPath: string) => {
+    try {
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return { ok: false, error: "Path not found" };
+      }
+      const err = await shell.openPath(targetPath);
+      return err ? { ok: false, error: err } : { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  ipcMain.handle(IPC.exportIcs, async (_e, payload: ExportIcsRequest) => {
+    if (!mainWindow) return { ok: false, error: "No window" };
+    try {
+      const appRow = loadApplications().find((a) => a.id === payload.applicationId);
+      if (!appRow) return { ok: false, error: "Application not found" };
+      const ics = buildInterviewIcs(appRow, loadPrefs().locale);
+      if (!ics) return { ok: false, error: "Interview date missing" };
+      const pick = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: `Interview_${(appRow.company || "Company").replace(/[^\w\-]+/g, "_")}.ics`,
+        filters: [{ name: "Calendar", extensions: ["ics"] }],
+      });
+      if (pick.canceled || !pick.filePath) return { ok: false, canceled: true };
+      await fsPromises.writeFile(pick.filePath, ics, "utf8");
+      return { ok: true, filePath: pick.filePath };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
   ipcMain.handle(IPC.openExternal, async (_e, url: string) => {
     try {
       const parsed = new URL(url);
@@ -152,6 +332,9 @@ function registerIpc() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === "win32") {
+    app.setAppUserModelId("com.alperenarslan.cvcreator");
+  }
   registerIpc();
   createWindow();
 

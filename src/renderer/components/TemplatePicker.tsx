@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CVData } from "../../shared/cv";
 import {
   defaultStyleAxes,
@@ -18,6 +18,8 @@ export function TemplatePicker({
 }) {
   const { t } = useLocale();
   const [advisorOpen, setAdvisorOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const axes: StyleAxes = cv.meta.styleAxes ?? defaultStyleAxes;
   const active = cv.meta.templateId;
   const wasImported = Boolean(cv.meta.wasImported);
@@ -27,11 +29,37 @@ export function TemplatePicker({
     [axes, wasImported],
   );
 
+  const visibleCatalog = TEMPLATE_CATALOG.filter(
+    (item) => item.id !== "source" || wasImported,
+  );
+
+  const activeName = t(
+    visibleCatalog.find((c) => c.id === active)?.nameKey ??
+      TEMPLATE_CATALOG.find((c) => c.id === active)?.nameKey ??
+      "templateAts",
+  );
+
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
   function setTemplate(templateId: CVTemplateId) {
     onChange({
       ...cv,
       meta: { ...cv.meta, templateId },
     });
+    setMenuOpen(false);
   }
 
   function setAxes(next: StyleAxes) {
@@ -46,61 +74,60 @@ export function TemplatePicker({
     });
   }
 
-  const visibleCatalog = TEMPLATE_CATALOG.filter(
-    (item) => item.id !== "source" || wasImported,
-  );
-
   return (
     <div className="template-picker mb-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold tracking-wide text-[var(--ink-soft)] uppercase">
-            {t("templateLabel")}
-          </span>
-          {wasImported && cv.meta.importedFrom ? (
-            <span className="text-[11px] text-[var(--ink-soft)]" title={cv.meta.importedFrom}>
-              ← {cv.meta.importedFrom}
+      <div className="template-toolbar">
+        <div className="template-select" ref={menuRef}>
+          <button
+            type="button"
+            className="template-select-trigger"
+            aria-expanded={menuOpen}
+            aria-haspopup="listbox"
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <span className="template-select-label">{t("templateLabel")}</span>
+            <span className="template-select-value">{activeName}</span>
+            <span className="template-select-chevron" aria-hidden="true">
+              ▾
             </span>
+          </button>
+          {menuOpen ? (
+            <div className="template-select-menu" role="listbox">
+              {/* Chip tags (önerilen / içe aktarım) UI’da yok — messages.ts */}
+              {visibleCatalog.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={active === item.id}
+                  className={active === item.id ? "is-active" : ""}
+                  onClick={() => setTemplate(item.id)}
+                >
+                  {t(item.nameKey)}
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
+
         <button
           type="button"
-          className="btn btn-ghost !px-2 !py-1 text-xs"
+          className={`btn btn-ghost !px-2.5 !py-1.5 text-xs ${advisorOpen ? "is-pressed" : ""}`}
           onClick={() => setAdvisorOpen((v) => !v)}
         >
           {advisorOpen ? t("templateAdvisorHide") : t("templateAdvisor")}
         </button>
       </div>
 
-      <div className="template-chips">
-        {visibleCatalog.map((item) => {
-          const selected = active === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`template-chip ${selected ? "is-active" : ""}`}
-              onClick={() => setTemplate(item.id)}
-              title={t(item.descKey)}
-            >
-              <span>{t(item.nameKey)}</span>
-              {item.recommended ? (
-                <em className="template-chip-tag">{t("templateRecommended")}</em>
-              ) : null}
-              {item.id === "source" ? (
-                <em className="template-chip-tag">{t("templateFromImport")}</em>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+      {wasImported && cv.meta.importedFrom ? (
+        <p className="m-0 mt-1.5 truncate text-[11px] text-[var(--ink-soft)]">
+          ← {cv.meta.importedFrom}
+        </p>
+      ) : null}
 
       {advisorOpen ? (
         <div className="template-advisor mt-3">
-          <p className="m-0 mb-3 text-xs leading-relaxed text-[var(--ink-soft)]">
-            {t("templateAdvisorHint")}
-          </p>
-
+          {/* templateAdvisorHint + recommend* — messages.ts */}
           <label className="template-axis">
             <span className="template-axis-labels">
               <span>{t("axisModern")}</span>
@@ -111,9 +138,7 @@ export function TemplatePicker({
               min={0}
               max={100}
               value={axes.era}
-              onChange={(e) =>
-                setAxes({ ...axes, era: Number(e.target.value) })
-              }
+              onChange={(e) => setAxes({ ...axes, era: Number(e.target.value) })}
             />
           </label>
 
@@ -134,7 +159,12 @@ export function TemplatePicker({
           </label>
 
           <div className="template-advice">
-            <strong>{t(advice.reasonKey)}</strong>
+            <strong>
+              {t(
+                TEMPLATE_CATALOG.find((c) => c.id === advice.templateId)?.nameKey ??
+                  "templateAts",
+              )}
+            </strong>
             <button
               type="button"
               className="btn btn-primary !px-2.5 !py-1 text-xs"

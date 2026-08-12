@@ -4,10 +4,12 @@ import { app } from "electron";
 import { createId } from "../shared/cv";
 import {
   APPLICATION_STATUSES,
+  defaultFollowUpDate,
   type JobApplication,
   type UpdateApplicationPatch,
   type UpsertApplicationInput,
 } from "../shared/tracker";
+import { deleteCvSnapshot, hasCvSnapshot } from "./snapshotStore";
 
 function filePath(): string {
   return path.join(app.getPath("userData"), "applications.json");
@@ -23,8 +25,9 @@ function normalizeStatus(value: unknown): JobApplication["status"] {
 function normalizeApp(raw: Partial<JobApplication>): JobApplication | null {
   if (!raw.url?.trim()) return null;
   const now = new Date().toISOString();
+  const id = raw.id || createId();
   return {
-    id: raw.id || createId(),
+    id,
     url: raw.url.trim(),
     jobTitle: String(raw.jobTitle ?? ""),
     company: String(raw.company ?? ""),
@@ -41,6 +44,19 @@ function normalizeApp(raw: Partial<JobApplication>): JobApplication | null {
     analyzedAt: raw.analyzedAt || now,
     updatedAt: raw.updatedAt || now,
     appliedAt: raw.appliedAt || undefined,
+    followUpAt: raw.followUpAt || undefined,
+    coverLetter: raw.coverLetter || undefined,
+    coverSubject: raw.coverSubject || undefined,
+    hasSnapshot: Boolean(raw.hasSnapshot) || hasCvSnapshot(id),
+    packageFolder: raw.packageFolder || undefined,
+    interviewTips: Array.isArray(raw.interviewTips)
+      ? raw.interviewTips.map(String)
+      : undefined,
+    interviewAt: raw.interviewAt || undefined,
+    rejectionNote: raw.rejectionNote || undefined,
+    learnedKeywords: Array.isArray(raw.learnedKeywords)
+      ? raw.learnedKeywords.map(String)
+      : undefined,
   };
 }
 
@@ -92,8 +108,10 @@ export function upsertFromAnalysis(input: UpsertApplicationInput): JobApplicatio
       summary: input.summary || existing.summary,
       strengths: input.strengths,
       missingKeywords: input.missingKeywords,
+      interviewTips: input.interviewTips?.length ? input.interviewTips : existing.interviewTips,
       analyzedAt: now,
       updatedAt: now,
+      hasSnapshot: existing.hasSnapshot || hasCvSnapshot(existing.id),
     };
     saveApplications(apps.map((a) => (a.id === existing.id ? next : a)));
     return next;
@@ -112,6 +130,7 @@ export function upsertFromAnalysis(input: UpsertApplicationInput): JobApplicatio
     notes: "",
     analyzedAt: now,
     updatedAt: now,
+    interviewTips: input.interviewTips,
   };
   saveApplications([created, ...apps]);
   return created;
@@ -128,9 +147,49 @@ export function updateApplication(patch: UpdateApplicationPatch): JobApplication
   if (patch.appliedAt === null) appliedAt = undefined;
   else if (typeof patch.appliedAt === "string") appliedAt = patch.appliedAt;
 
+  let followUpAt = current.followUpAt;
+  if (patch.followUpAt === null) followUpAt = undefined;
+  else if (typeof patch.followUpAt === "string") followUpAt = patch.followUpAt;
+
   if (patch.status === "applied" && !appliedAt) {
     appliedAt = now.slice(0, 10);
   }
+
+  if (
+    (patch.status === "applied" || (!patch.status && current.status === "applied" && patch.appliedAt)) &&
+    !followUpAt &&
+    patch.followUpAt !== null
+  ) {
+    followUpAt = defaultFollowUpDate(appliedAt || now);
+  }
+
+  let coverLetter = current.coverLetter;
+  if (patch.coverLetter === null) coverLetter = undefined;
+  else if (typeof patch.coverLetter === "string") coverLetter = patch.coverLetter;
+
+  let coverSubject = current.coverSubject;
+  if (patch.coverSubject === null) coverSubject = undefined;
+  else if (typeof patch.coverSubject === "string") coverSubject = patch.coverSubject;
+
+  let packageFolder = current.packageFolder;
+  if (patch.packageFolder === null) packageFolder = undefined;
+  else if (typeof patch.packageFolder === "string") packageFolder = patch.packageFolder;
+
+  let interviewAt = current.interviewAt;
+  if (patch.interviewAt === null) interviewAt = undefined;
+  else if (typeof patch.interviewAt === "string") interviewAt = patch.interviewAt;
+
+  if (patch.status === "interviewing" && !interviewAt && patch.interviewAt !== null) {
+    interviewAt = now.slice(0, 10);
+  }
+
+  let rejectionNote = current.rejectionNote;
+  if (patch.rejectionNote === null) rejectionNote = undefined;
+  else if (typeof patch.rejectionNote === "string") rejectionNote = patch.rejectionNote;
+
+  let learnedKeywords = current.learnedKeywords;
+  if (patch.learnedKeywords === null) learnedKeywords = undefined;
+  else if (Array.isArray(patch.learnedKeywords)) learnedKeywords = patch.learnedKeywords;
 
   const next: JobApplication = {
     ...current,
@@ -139,6 +198,14 @@ export function updateApplication(patch: UpdateApplicationPatch): JobApplication
     jobTitle: patch.jobTitle ?? current.jobTitle,
     company: patch.company ?? current.company,
     appliedAt,
+    followUpAt,
+    interviewAt,
+    coverLetter,
+    coverSubject,
+    hasSnapshot: patch.hasSnapshot ?? current.hasSnapshot,
+    packageFolder,
+    rejectionNote,
+    learnedKeywords,
     updatedAt: now,
   };
 
@@ -151,6 +218,7 @@ export function deleteApplication(id: string): boolean {
   const apps = loadApplications();
   const next = apps.filter((a) => a.id !== id);
   if (next.length === apps.length) return false;
+  deleteCvSnapshot(id);
   saveApplications(next);
   return true;
 }

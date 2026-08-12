@@ -30,7 +30,8 @@ export function ImportModal({ open, onClose, onConfirm, hasKey, onSaveKey }: Pro
   async function handleContinue() {
     setError(null);
     if (engine === "gemini" && !hasKey && !apiKey.trim()) {
-      setError(t("geminiKeyHint"));
+      // geminiKeyHint: Gemini ile aktarmak için API anahtarı gerekli
+      setError(t("geminiKey"));
       return;
     }
     try {
@@ -59,8 +60,10 @@ export function ImportModal({ open, onClose, onConfirm, hasKey, onSaveKey }: Pro
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.98, y: 8 }}
       >
-        <h3 className="display mt-0 mb-1 text-xl font-semibold">{t("importTitle")}</h3>
-        <p className="mt-0 mb-4 text-sm text-[var(--ink-soft)]">{t("importChoose")}</p>
+        <h3 className="display mt-0 mb-4 text-xl font-semibold">{t("importTitle")}</h3>
+        {/* importChoose: Nasıl aktarmak istediğini seç, ardından CV dosyanı seçersin.
+            importLocalDesc: İnternet olmadan dosyadan okur
+            importGeminiDesc: Daha akıllı alan eşlemesi — API anahtarı gerekir */}
 
         <div className="grid gap-2">
           <EngineOption
@@ -75,23 +78,20 @@ export function ImportModal({ open, onClose, onConfirm, hasKey, onSaveKey }: Pro
           />
         </div>
 
-        {engine === "gemini" && (
+        {engine === "gemini" && !hasKey && (
           <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--line)] bg-[var(--accent-soft)] p-3">
-            {hasKey ? (
-              <p className="m-0 text-sm text-[var(--ink)]">{t("geminiKeySaved")}</p>
-            ) : (
-              <label className="block text-sm">
-                <span className="mb-1.5 block text-[var(--ink-soft)]">{t("geminiKey")}</span>
-                <input
-                  className="field"
-                  type="password"
-                  autoComplete="off"
-                  placeholder={t("geminiKeyPlaceholder")}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-              </label>
-            )}
+            {/* geminiKeyHint: Gemini ile aktarmak için API anahtarı gerekli */}
+            <label className="block text-sm">
+              <span className="mb-1.5 block text-[var(--ink-soft)]">{t("geminiKey")}</span>
+              <input
+                className="field"
+                type="password"
+                autoComplete="off"
+                placeholder={t("geminiKeyPlaceholder")}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+            </label>
           </div>
         )}
 

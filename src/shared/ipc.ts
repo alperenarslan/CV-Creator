@@ -1,7 +1,21 @@
 import type { CVData } from "./cv";
-import type { AnalyzeJobRequest, AnalyzeJobResult } from "./analysis";
+import type {
+  AdaptLanguageRequest,
+  AdaptLanguageResult,
+  AnalyzeJobRequest,
+  AnalyzeJobResult,
+  CoverLetterTone,
+  InterviewBankRequest,
+  InterviewBankResult,
+  JobAnalysis,
+  KeywordRewriteRequest,
+  KeywordRewriteResult,
+  ShortCvRequest,
+  ShortCvResult,
+} from "./analysis";
 import type { AppPrefs, ImportEngine } from "./prefs";
 import type { JobApplication, UpdateApplicationPatch } from "./tracker";
+import type { AtsReport } from "./ats";
 
 export const IPC = {
   cvLoad: "cv:load",
@@ -11,6 +25,17 @@ export const IPC = {
   exportHtml: "export:html",
   exportPdf: "export:pdf",
   analyzeJob: "job:analyze",
+  coverLetter: "job:cover-letter",
+  keywordRewrite: "job:keyword-rewrite",
+  adaptLanguage: "job:adapt-language",
+  shortCv: "job:short-cv",
+  interviewBank: "job:interview-bank",
+  atsCheck: "job:ats-check",
+  saveSnapshot: "job:save-snapshot",
+  loadSnapshot: "job:load-snapshot",
+  exportPackage: "job:export-package",
+  exportIcs: "job:export-ics",
+  openPath: "shell:open-path",
   hasGeminiKey: "ai:has-key",
   setGeminiKey: "ai:set-key",
   prefsLoad: "prefs:load",
@@ -46,6 +71,56 @@ export interface LegacyLaunchResult {
   error?: string;
 }
 
+export interface CoverLetterRequest {
+  cv: CVData;
+  analysis: JobAnalysis;
+  tone: CoverLetterTone;
+  applicationId?: string;
+}
+
+export interface CoverLetterApiResult {
+  ok: boolean;
+  subject?: string;
+  body?: string;
+  error?: string;
+}
+
+export interface SnapshotSaveRequest {
+  applicationId: string;
+  cv: CVData;
+}
+
+export interface SnapshotLoadResult {
+  ok: boolean;
+  cv?: CVData;
+  error?: string;
+}
+
+export interface PackageExportApiRequest {
+  cv: CVData;
+  analysis: JobAnalysis;
+  coverLetter?: string;
+  coverSubject?: string;
+  applicationId?: string;
+  includePdf?: boolean;
+}
+
+export interface PackageExportApiResult {
+  ok: boolean;
+  folderPath?: string;
+  error?: string;
+  canceled?: boolean;
+}
+
+export interface AtsCheckRequest {
+  cv: CVData;
+  missingKeywords?: string[];
+}
+
+export interface ExportIcsRequest {
+  applicationId: string;
+}
+
 export interface ElectronAPI {
   loadCV: () => Promise<CVData>;
   saveCV: (cv: CVData) => Promise<{ ok: boolean }>;
@@ -54,6 +129,17 @@ export interface ElectronAPI {
   exportHtml: (cv: CVData) => Promise<ExportResult>;
   exportPdf: (cv: CVData) => Promise<ExportResult>;
   analyzeJob: (payload: AnalyzeJobRequest) => Promise<AnalyzeJobResult>;
+  generateCoverLetter: (payload: CoverLetterRequest) => Promise<CoverLetterApiResult>;
+  rewriteKeywords: (payload: KeywordRewriteRequest) => Promise<KeywordRewriteResult>;
+  adaptLanguage: (payload: AdaptLanguageRequest) => Promise<AdaptLanguageResult>;
+  shortenCv: (payload: ShortCvRequest) => Promise<ShortCvResult>;
+  interviewBank: (payload: InterviewBankRequest) => Promise<InterviewBankResult>;
+  runAtsCheck: (payload: AtsCheckRequest) => Promise<AtsReport>;
+  saveSnapshot: (payload: SnapshotSaveRequest) => Promise<{ ok: boolean; error?: string }>;
+  loadSnapshot: (applicationId: string) => Promise<SnapshotLoadResult>;
+  exportPackage: (payload: PackageExportApiRequest) => Promise<PackageExportApiResult>;
+  exportIcs: (payload: ExportIcsRequest) => Promise<ExportResult>;
+  openPath: (targetPath: string) => Promise<{ ok: boolean; error?: string }>;
   hasGeminiKey: () => Promise<boolean>;
   setGeminiKey: (key: string) => Promise<{ ok: boolean }>;
   loadPrefs: () => Promise<AppPrefs>;

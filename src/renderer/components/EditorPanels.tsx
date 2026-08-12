@@ -4,6 +4,7 @@ import type { CVData, EducationItem, ExperienceItem } from "../../shared/cv";
 import { createId } from "../../shared/cv";
 import { useLocale } from "../i18n/LocaleContext";
 import { fileToPhotoDataUrl } from "../lib/photo";
+import { ClipboardQuickBar } from "./ClipboardQuickBar";
 
 const stepIds = ["personal", "education", "experience", "skills", "summary"] as const;
 export type StepId = (typeof stepIds)[number];
@@ -13,9 +14,10 @@ interface Props {
   onStepChange: (step: StepId) => void;
   cv: CVData;
   onChange: (cv: CVData) => void;
+  onToast: (message: string) => void;
 }
 
-export function EditorPanels({ step, onStepChange, cv, onChange }: Props) {
+export function EditorPanels({ step, onStepChange, cv, onChange, onToast }: Props) {
   const { t } = useLocale();
   const p = cv.personal;
   const steps: Array<{ id: StepId; label: string }> = [
@@ -28,7 +30,7 @@ export function EditorPanels({ step, onStepChange, cv, onChange }: Props) {
 
   return (
     <div className="surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius)] p-3 sm:p-4">
-      <div className="mb-3 flex flex-wrap gap-1.5">
+      <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {steps.map((s) => (
           <button
             key={s.id}
@@ -39,6 +41,9 @@ export function EditorPanels({ step, onStepChange, cv, onChange }: Props) {
             {s.label}
           </button>
         ))}
+        <div className="ml-auto">
+          <ClipboardQuickBar cv={cv} onToast={onToast} />
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto scroll-thin">
@@ -295,7 +300,7 @@ function PhotoField({
           )}
         </div>
         <div className="photo-field-actions">
-          <p className="m-0 text-xs leading-relaxed text-[var(--ink-soft)]">{t("photoHint")}</p>
+          {/* photoHint: PDF/DOCX’ten otomatik çekilir (Gemini sadece metni okur). Yoksa buradan ekle. */}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"

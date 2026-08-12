@@ -6,6 +6,7 @@ import type { AppLocale, ImportEngine, ThemeMode } from "../shared/prefs";
 import { AIMatchPanel } from "./components/AIMatchPanel";
 import { CVPreview } from "./components/CVPreview";
 import { EditorPanels, type StepId } from "./components/EditorPanels";
+import { ExportFlyout } from "./components/ExportFlyout";
 import { ApplicationsPanel } from "./components/ApplicationsPanel";
 import { ImportModal } from "./components/ImportModal";
 import { TemplatePicker } from "./components/TemplatePicker";
@@ -75,6 +76,7 @@ function AppShell({
   const [aiOpen, setAiOpen] = useState(false);
   const [hasKey, setHasKey] = useState(false);
   const [analysis, setAnalysis] = useState<JobAnalysis | null>(null);
+  const [applicationId, setApplicationId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const [legacyOpen, setLegacyOpen] = useState(false);
@@ -142,6 +144,17 @@ function AppShell({
   }
 
   async function handleExport(kind: "txt" | "html" | "pdf") {
+    try {
+      const ats = await window.api.runAtsCheck({
+        cv,
+        missingKeywords: analysis?.missingKeywords,
+      });
+      if (ats.score < 70) {
+        showToast(`${t("atsCheck")}: ${ats.score}/100`);
+      }
+    } catch {
+      /* non-blocking */
+    }
     const fn =
       kind === "txt"
         ? window.api.exportTxt
@@ -169,6 +182,7 @@ function AppShell({
       }
       setCv(result.cv);
       setAnalysis(null);
+      setApplicationId(null);
       setSelected(new Set());
       setStep("personal");
       setMobilePane("preview");
@@ -191,6 +205,7 @@ function AppShell({
     setClearConfirmOpen(false);
     setCv(createEmptyCV());
     setAnalysis(null);
+    setApplicationId(null);
     setSelected(new Set());
     showToast(t("cleared"));
   }
@@ -231,7 +246,7 @@ function AppShell({
           title="CV Creator"
         >
           <h1 className="display m-0 text-[1.85rem] font-semibold sm:text-[2.1rem]">CV Creator</h1>
-          <p className="slogan m-0 mt-1">{t("slogan")}</p>
+          {/* slogan: “CV oluştur, mevcut CV’den aktar, ilana göre optimize et” — UI’da gösterilmez */}
         </button>
 
         <div className="prefs-bar justify-end">
@@ -245,9 +260,9 @@ function AppShell({
           >
             {t("tracker")}
           </button>
+          {/* API badge: oturum anahtarı bellekte; kapanınca silinir */}
           <span
             className={`prefs-chip api-session ${hasKey ? "is-on" : "is-off"}`}
-            title={hasKey ? t("apiBadgeTitleOn") : t("apiBadgeTitleOff")}
             aria-label={hasKey ? t("apiBadgeOn") : t("apiBadgeOff")}
           >
             <span className="api-session-icon" aria-hidden="true">
@@ -356,13 +371,19 @@ function AppShell({
                   <div className="import-progress" aria-hidden="true">
                     <span className="import-progress-bar" />
                   </div>
-                  <p className="import-status-hint m-0">{t("importingHint")}</p>
+                  {/* importingHint: Dosya okunuyor, alanlar eşleniyor */}
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
           <div className="min-h-0 flex-1">
-            <EditorPanels step={step} onStepChange={setStep} cv={cv} onChange={setCv} />
+            <EditorPanels
+              step={step}
+              onStepChange={setStep}
+              cv={cv}
+              onChange={setCv}
+              onToast={showToast}
+            />
           </div>
         </section>
 
@@ -376,18 +397,7 @@ function AppShell({
               <h2 className="display m-0 text-base font-semibold sm:text-lg">{t("preview")}</h2>
               <span className="text-xs text-[var(--ink-soft)]">{t("autoSave")}</span>
             </div>
-            <div className="export-switch" role="group" aria-label={t("export")}>
-              <span className="export-switch-label">{t("export")}</span>
-              <button type="button" onClick={() => void handleExport("txt")}>
-                TXT
-              </button>
-              <button type="button" onClick={() => void handleExport("html")}>
-                HTML
-              </button>
-              <button type="button" onClick={() => void handleExport("pdf")}>
-                PDF
-              </button>
-            </div>
+            <ExportFlyout onExport={(kind) => void handleExport(kind)} />
           </div>
           <TemplatePicker cv={cv} onChange={setCv} />
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -397,6 +407,7 @@ function AppShell({
       </main>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center sm:bottom-5">
+        {/* analyzeJobHint: İlan URL’si ile eşleştir */}
         <button
           type="button"
           className="analyze-launch"
@@ -405,7 +416,6 @@ function AppShell({
             setAiOpen((v) => !v);
           }}
           aria-label={t("analyzeJob")}
-          title={`${t("analyzeJob")} — ${t("analyzeJobHint")}`}
         >
           <span className="analyze-launch-orb" aria-hidden="true">
             <AnalyzeIcon />
@@ -427,15 +437,37 @@ function AppShell({
               showToast(t("keySaved"));
             }}
             analysis={analysis}
-            onAnalyzed={(a) => {
+            applicationId={applicationId}
+            onAnalyzed={(a, id) => {
               setAnalysis(a);
+              setApplicationId(id ?? null);
               setSelected(new Set(a.suggestions.map((s) => s.id)));
               setAppsRefresh((n) => n + 1);
               showToast(t("trackedToast"));
             }}
+            onMergeSuggestions={(extra) => {
+              setAnalysis((prev) => {
+                if (!prev) return prev;
+                return { ...prev, suggestions: [...prev.suggestions, ...extra] };
+              });
+              setSelected((prev) => {
+                const next = new Set(prev);
+                for (const s of extra) next.add(s.id);
+                return next;
+              });
+            }}
+            onCvAdapted={(next) => {
+              setCv(next);
+            }}
             selected={selected}
             onToggleSuggestion={toggleSuggestion}
             onApplySelected={applySelected}
+            onToast={showToast}
+            onLoadSnapshot={(next) => {
+              setCv(next);
+              setAppsRefresh((n) => n + 1);
+            }}
+            onAppsChanged={() => setAppsRefresh((n) => n + 1)}
           />
         )}
       </AnimatePresence>
@@ -448,6 +480,12 @@ function AppShell({
             refreshToken={appsRefresh}
             onOpenUrl={(url) => {
               void window.api.openExternal(url);
+            }}
+            onToast={showToast}
+            onLoadSnapshotCv={(next) => {
+              setCv(next);
+              setTrackerOpen(false);
+              setMobilePane("preview");
             }}
           />
         )}
@@ -486,10 +524,11 @@ function AppShell({
       <AnimatePresence>
         {toast && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            className="surface-solid fixed bottom-4 left-4 z-40 max-w-[min(420px,calc(100%-2rem))] rounded-[12px] px-3.5 py-2 text-sm"
+            role="status"
+            initial={{ opacity: 0, y: 12, x: "-50%", scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+            exit={{ opacity: 0, y: 8, x: "-50%", scale: 0.98 }}
+            className="app-toast"
           >
             {toast}
           </motion.div>
@@ -610,8 +649,8 @@ function LegacyModal({ onClose, onLaunch }: { onClose: () => void; onLaunch: () 
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.98, y: 8 }}
       >
-        <h3 className="display mt-0 mb-2 text-xl font-semibold">{t("classicTitle")}</h3>
-        <p className="mt-0 mb-4 text-sm text-[var(--ink-soft)]">{t("classicBody")}</p>
+        <h3 className="display mt-0 mb-4 text-xl font-semibold">{t("classicTitle")}</h3>
+        {/* classicBody: Orijinal Swing CV Creator. JDK varsa şimdi açabilirsin. */}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             {t("close")}
