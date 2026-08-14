@@ -170,3 +170,41 @@ ${JSON.stringify(opts.cv)}
   const obj = extractJson(text) as Record<string, unknown>;
   return normalizeSuggestions(obj.suggestions).filter((s) => s.suggestedText.trim());
 }
+
+export interface ListingMeta {
+  jobTitle: string;
+  company: string;
+  summary: string;
+  categories: string[];
+}
+
+/** Light pass: title/company/tags only — no CV match. */
+export async function categorizeJobListing(jobText: string): Promise<ListingMeta> {
+  const prompt = `You categorize a job posting for a tracker board.
+Return ONLY valid JSON:
+{
+  "jobTitle": string,
+  "company": string,
+  "summary": string,
+  "categories": string[]
+}
+
+Rules:
+- categories: 1-4 short tech/domain tags (examples: "React", "Backend", "Data Science", "DevOps", "Mobile", "Product").
+- Prefer widely used English skill/domain labels when the posting is technical.
+- summary: 1-2 sentences, same language as the posting.
+- If company/title unknown, use empty string / best guess from text.
+- Do NOT invent skills not implied by the posting.
+
+JOB_TEXT:
+${jobText.slice(0, 12000)}
+`;
+  const text = await generateGeminiJson([{ text: prompt }], 0.2);
+  const obj = extractJson(text) as Record<string, unknown>;
+  return {
+    jobTitle: String(obj.jobTitle ?? "").trim(),
+    company: String(obj.company ?? "").trim(),
+    summary: String(obj.summary ?? "").trim().slice(0, 400),
+    categories: asStringList(obj.categories, 4),
+  };
+}

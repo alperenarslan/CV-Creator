@@ -5,6 +5,8 @@ import {
   type CoverLetterRequest,
   type ElectronAPI,
   type ExportIcsRequest,
+  type IngestJobProgress,
+  type IngestJobUrlsRequest,
   type PackageExportApiRequest,
   type SnapshotSaveRequest,
 } from "../shared/ipc";
@@ -51,6 +53,17 @@ const api: ElectronAPI = {
   updateApplication: (patch: UpdateApplicationPatch) =>
     ipcRenderer.invoke(IPC.appsUpdate, patch),
   deleteApplication: (id: string) => ipcRenderer.invoke(IPC.appsDelete, id),
+  ingestJobUrls: (payload: IngestJobUrlsRequest) =>
+    ipcRenderer.invoke(IPC.appsIngestUrls, payload),
+  onIngestProgress: (cb: (progress: IngestJobProgress) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: IngestJobProgress) => {
+      cb(progress);
+    };
+    ipcRenderer.on(IPC.appsIngestProgress, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC.appsIngestProgress, listener);
+    };
+  },
   openExternal: (url: string) => ipcRenderer.invoke(IPC.openExternal, url),
   launchLegacy: () => ipcRenderer.invoke(IPC.launchLegacy),
 };

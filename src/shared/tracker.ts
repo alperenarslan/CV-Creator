@@ -18,6 +18,9 @@ export const APPLICATION_STATUSES: ApplicationStatus[] = [
   "withdrawn",
 ];
 
+/** Lightweight listing ingest (fetch + categories), before full CV match. */
+export type ListingFetchStatus = "pending" | "fetching" | "ready" | "blocked" | "error";
+
 export interface JobApplication {
   id: string;
   url: string;
@@ -45,6 +48,10 @@ export interface JobApplication {
   rejectionNote?: string;
   /** Keywords extracted from rejection lessons */
   learnedKeywords?: string[];
+  /** Dynamic AI tags e.g. React, Data Science */
+  categories?: string[];
+  fetchStatus?: ListingFetchStatus;
+  fetchError?: string;
 }
 
 export interface UpsertApplicationInput {
@@ -56,6 +63,7 @@ export interface UpsertApplicationInput {
   strengths: string[];
   missingKeywords: string[];
   interviewTips?: string[];
+  categories?: string[];
 }
 
 export interface UpdateApplicationPatch {
@@ -73,6 +81,34 @@ export interface UpdateApplicationPatch {
   packageFolder?: string | null;
   rejectionNote?: string | null;
   learnedKeywords?: string[] | null;
+  categories?: string[] | null;
+  fetchStatus?: ListingFetchStatus;
+  fetchError?: string | null;
+  summary?: string;
+  matchScore?: number;
+}
+
+/** Split pasted text into unique http(s) job URLs. */
+export function parseJobUrls(raw: string): string[] {
+  const tokens = raw
+    .split(/[\s,;\n\r\t]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const token of tokens) {
+    try {
+      const u = new URL(token);
+      if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+      const key = u.href.replace(/\/$/, "").toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(u.href);
+    } catch {
+      /* skip */
+    }
+  }
+  return out;
 }
 
 /** Default follow-up = applied date + 7 days */

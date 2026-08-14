@@ -49,13 +49,13 @@ export function ImportModal({ open, onClose, onConfirm, hasKey, onSaveKey }: Pro
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 grid place-items-center bg-[rgba(12,24,32,0.45)] p-4"
+      className="scrim z-50"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
       <motion.div
-        className="surface-solid w-full max-w-md rounded-[var(--radius)] p-5"
+        className="surface-solid dialog rounded-[var(--radius)]"
         initial={{ scale: 0.97, y: 10 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.98, y: 8 }}

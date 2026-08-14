@@ -29,24 +29,28 @@ export function EditorPanels({ step, onStepChange, cv, onChange, onToast }: Prop
   ];
 
   return (
-    <div className="surface flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius)] p-3 sm:p-4">
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        {steps.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className={`btn text-sm ${step === s.id ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => onStepChange(s.id)}
-          >
-            {s.label}
-          </button>
-        ))}
-        <div className="ml-auto">
+    <div className="editor-panels flex h-full min-h-0 flex-col">
+      <div className="editor-chrome">
+        <div className="step-tabs" role="tablist">
+          {steps.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={step === s.id}
+              className={`btn text-sm ${step === s.id ? "btn-ghost is-pressed" : "btn-ghost"}`}
+              onClick={() => onStepChange(s.id)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div className="editor-chrome-copy">
           <ClipboardQuickBar cv={cv} onToast={onToast} />
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto scroll-thin">
+      <div className="editor-body min-h-0 flex-1 overflow-auto scroll-thin px-3 pb-3 sm:px-4 sm:pb-4">
         <AnimatePresence mode="wait">
           <motion.div
             key={step}

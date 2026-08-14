@@ -85,6 +85,7 @@ function AppShell({
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [trackerOpen, setTrackerOpen] = useState(false);
   const [appsRefresh, setAppsRefresh] = useState(0);
+  const [matchUrlSeed, setMatchUrlSeed] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<MobilePane>("edit");
   const logoClicks = useRef(0);
   const logoTimer = useRef<number | null>(null);
@@ -238,21 +239,22 @@ function AppShell({
 
   return (
     <div className="app-shell relative">
-      <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <header className="app-header">
         <button
           type="button"
           onClick={onLogoClick}
-          className="border-0 bg-transparent p-0 text-left cursor-pointer shrink-0"
+          className="app-brand"
           title="CV Creator"
         >
-          <h1 className="display m-0 text-[1.85rem] font-semibold sm:text-[2.1rem]">CV Creator</h1>
+          <h1 className="display">CV Creator</h1>
           {/* slogan: “CV oluştur, mevcut CV’den aktar, ilana göre optimize et” — UI’da gösterilmez */}
         </button>
 
-        <div className="prefs-bar justify-end">
+        <div className="prefs-bar">
           <button
             type="button"
-            className="prefs-chip"
+            className={`btn btn-ghost ${trackerOpen ? "is-pressed" : ""}`}
+            aria-pressed={trackerOpen}
             onClick={() => {
               setAiOpen(false);
               setTrackerOpen((v) => !v);
@@ -268,7 +270,7 @@ function AppShell({
             <span className="api-session-icon" aria-hidden="true">
               <KeyIcon />
             </span>
-            {hasKey ? t("apiBadgeOn") : t("apiBadgeOff")}
+            <span className="api-session-label">{hasKey ? t("apiBadgeOn") : t("apiBadgeOff")}</span>
           </span>
           <div
             className={`theme-switch ${theme === "dark" ? "is-dark" : "is-light"}`}
@@ -294,39 +296,36 @@ function AppShell({
             </button>
           </div>
 
-          <div className="lang-switch" role="group" aria-label={t("langToggle")}>
-            <span className="lang-label" title={t("language")} aria-hidden="true">
-              <GlobeIcon />
-            </span>
-            <button
-              type="button"
-              aria-pressed={locale === "tr"}
-              onClick={() => void setLocale("tr")}
+          <label className="lang-select">
+            <span className="sr-only">{t("langToggle")}</span>
+            <select
+              className="lang-select-control"
+              value={locale}
+              aria-label={t("langToggle")}
+              onChange={(e) => void setLocale(e.target.value as AppLocale)}
             >
-              TR
-            </button>
-            <button
-              type="button"
-              aria-pressed={locale === "en"}
-              onClick={() => void setLocale("en")}
-            >
-              EN
-            </button>
-          </div>
+              <option value="tr">TR</option>
+              <option value="en">EN</option>
+            </select>
+          </label>
         </div>
       </header>
 
-      <div className="flex gap-2 lg:hidden">
+      <div className="pane-switch" role="tablist" aria-label={t("edit") + " / " + t("preview")}>
         <button
           type="button"
-          className={`btn flex-1 ${mobilePane === "edit" ? "btn-primary" : "btn-ghost"}`}
+          role="tab"
+          aria-selected={mobilePane === "edit"}
+          className={`btn ${mobilePane === "edit" ? "is-active" : ""}`}
           onClick={() => setMobilePane("edit")}
         >
           {t("edit")}
         </button>
         <button
           type="button"
-          className={`btn flex-1 ${mobilePane === "preview" ? "btn-primary" : "btn-ghost"}`}
+          role="tab"
+          aria-selected={mobilePane === "preview"}
+          className={`btn ${mobilePane === "preview" ? "is-active" : ""}`}
           onClick={() => setMobilePane("preview")}
         >
           {t("preview")}
@@ -335,12 +334,12 @@ function AppShell({
 
       <main className="workspace">
         <section
-          className={`editor-pane flex h-full min-h-[420px] flex-col gap-3 ${
+          className={`editor-pane flex h-full min-h-[420px] flex-col ${
             mobilePane !== "edit" ? "is-hidden-mobile" : ""
           }`}
         >
-          <div className="flex flex-col items-stretch gap-2">
-            <div className="flex flex-wrap items-center justify-start gap-2">
+          <div className="surface editor-card flex h-full min-h-0 flex-col overflow-hidden rounded-[var(--radius)]">
+            <div className="editor-tools">
               <button
                 type="button"
                 className={`btn btn-primary ${importing ? "is-busy" : ""}`}
@@ -358,32 +357,31 @@ function AppShell({
               >
                 {t("clear")}
               </button>
+              <AnimatePresence>
+                {importing && (
+                  <motion.div
+                    className="import-status editor-tools-status"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -2 }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    <div className="import-progress" aria-hidden="true">
+                      <span className="import-progress-bar" />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            <AnimatePresence>
-              {importing && (
-                <motion.div
-                  className="import-status"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -2 }}
-                  transition={{ duration: 0.18 }}
-                >
-                  <div className="import-progress" aria-hidden="true">
-                    <span className="import-progress-bar" />
-                  </div>
-                  {/* importingHint: Dosya okunuyor, alanlar eşleniyor */}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-          <div className="min-h-0 flex-1">
-            <EditorPanels
-              step={step}
-              onStepChange={setStep}
-              cv={cv}
-              onChange={setCv}
-              onToast={showToast}
-            />
+            <div className="min-h-0 flex-1">
+              <EditorPanels
+                step={step}
+                onStepChange={setStep}
+                cv={cv}
+                onChange={setCv}
+                onToast={showToast}
+              />
+            </div>
           </div>
         </section>
 
@@ -406,16 +404,17 @@ function AppShell({
         </section>
       </main>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center sm:bottom-5">
+      <div className="analyze-dock">
         {/* analyzeJobHint: İlan URL’si ile eşleştir */}
         <button
           type="button"
-          className="analyze-launch"
+          className={`analyze-launch ${aiOpen ? "is-open" : ""}`}
           onClick={() => {
             setTrackerOpen(false);
             setAiOpen((v) => !v);
           }}
           aria-label={t("analyzeJob")}
+          aria-pressed={aiOpen}
         >
           <span className="analyze-launch-orb" aria-hidden="true">
             <AnalyzeIcon />
@@ -428,7 +427,11 @@ function AppShell({
         {aiOpen && (
           <AIMatchPanel
             open={aiOpen}
-            onClose={() => setAiOpen(false)}
+            onClose={() => {
+              setAiOpen(false);
+              setMatchUrlSeed(null);
+            }}
+            initialUrl={matchUrlSeed}
             cv={cv}
             hasKey={hasKey}
             onSaveKey={async (key) => {
@@ -482,6 +485,11 @@ function AppShell({
               void window.api.openExternal(url);
             }}
             onToast={showToast}
+            onMatchListing={(url) => {
+              setMatchUrlSeed(url);
+              setTrackerOpen(false);
+              setAiOpen(true);
+            }}
             onLoadSnapshotCv={(next) => {
               setCv(next);
               setTrackerOpen(false);
@@ -612,15 +620,6 @@ function MoonIcon() {
         strokeLinejoin="round"
         d="M17.8 15.2A7.2 7.2 0 0 1 8.8 6.2a7.2 7.2 0 1 0 9 9Z"
       />
-    </svg>
-  );
-}
-
-function GlobeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18M12 3c2.7 2.8 4 5.8 4 9s-1.3 6.2-4 9c-2.7-2.8-4-5.8-4-9s1.3-6.2 4-9Z" />
     </svg>
   );
 }

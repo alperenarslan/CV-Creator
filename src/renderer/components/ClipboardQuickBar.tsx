@@ -55,9 +55,10 @@ export function ClipboardQuickBar({
         className="btn btn-ghost !px-2.5 !py-1.5 text-xs"
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-label={t("copyMenu")}
         onClick={() => setOpen((v) => !v)}
       >
-        {t("copyMenu")}
+        <span className="copy-menu-label">{t("copyMenu")}</span>
         <span className="copy-menu-chevron" aria-hidden="true">
           ▾
         </span>

@@ -14,7 +14,7 @@ import type {
   ShortCvResult,
 } from "./analysis";
 import type { AppPrefs, ImportEngine } from "./prefs";
-import type { JobApplication, UpdateApplicationPatch } from "./tracker";
+import type { JobApplication, ListingFetchStatus, UpdateApplicationPatch } from "./tracker";
 import type { AtsReport } from "./ats";
 
 export const IPC = {
@@ -43,9 +43,38 @@ export const IPC = {
   appsLoad: "apps:load",
   appsUpdate: "apps:update",
   appsDelete: "apps:delete",
+  appsIngestUrls: "apps:ingest-urls",
+  appsIngestProgress: "apps:ingest-progress",
   openExternal: "shell:open-external",
   launchLegacy: "legacy:launch",
 } as const;
+
+export interface IngestJobUrlsRequest {
+  raw: string;
+}
+
+export interface IngestJobUrlItem {
+  url: string;
+  id?: string;
+  fetchStatus: ListingFetchStatus;
+  error?: string;
+  created?: boolean;
+}
+
+export interface IngestJobUrlsResult {
+  ok: boolean;
+  items: IngestJobUrlItem[];
+  error?: string;
+}
+
+export interface IngestJobProgress {
+  index: number;
+  total: number;
+  url: string;
+  id?: string;
+  fetchStatus: ListingFetchStatus;
+  error?: string;
+}
 
 export type ExportFormat = "txt" | "html" | "pdf";
 
@@ -147,6 +176,8 @@ export interface ElectronAPI {
   loadApplications: () => Promise<JobApplication[]>;
   updateApplication: (patch: UpdateApplicationPatch) => Promise<JobApplication | null>;
   deleteApplication: (id: string) => Promise<{ ok: boolean }>;
+  ingestJobUrls: (payload: IngestJobUrlsRequest) => Promise<IngestJobUrlsResult>;
+  onIngestProgress: (cb: (progress: IngestJobProgress) => void) => () => void;
   openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
   launchLegacy: () => Promise<LegacyLaunchResult>;
 }

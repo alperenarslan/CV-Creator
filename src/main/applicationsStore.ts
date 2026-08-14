@@ -6,6 +6,7 @@ import {
   APPLICATION_STATUSES,
   defaultFollowUpDate,
   type JobApplication,
+  type ListingFetchStatus,
   type UpdateApplicationPatch,
   type UpsertApplicationInput,
 } from "../shared/tracker";
@@ -15,11 +16,35 @@ function filePath(): string {
   return path.join(app.getPath("userData"), "applications.json");
 }
 
+const FETCH_STATUSES: ListingFetchStatus[] = [
+  "pending",
+  "fetching",
+  "ready",
+  "blocked",
+  "error",
+];
+
 function normalizeStatus(value: unknown): JobApplication["status"] {
   const s = String(value ?? "saved");
   return (APPLICATION_STATUSES as string[]).includes(s)
     ? (s as JobApplication["status"])
     : "saved";
+}
+
+function normalizeCategories(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const list = raw
+    .map(String)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  return list.length ? list : undefined;
+}
+
+function normalizeFetchStatus(raw: unknown): ListingFetchStatus | undefined {
+  return FETCH_STATUSES.includes(raw as ListingFetchStatus)
+    ? (raw as ListingFetchStatus)
+    : undefined;
 }
 
 function normalizeApp(raw: Partial<JobApplication>): JobApplication | null {
@@ -57,6 +82,9 @@ function normalizeApp(raw: Partial<JobApplication>): JobApplication | null {
     learnedKeywords: Array.isArray(raw.learnedKeywords)
       ? raw.learnedKeywords.map(String)
       : undefined,
+    categories: normalizeCategories(raw.categories),
+    fetchStatus: normalizeFetchStatus(raw.fetchStatus),
+    fetchError: raw.fetchError ? String(raw.fetchError) : undefined,
   };
 }
 
@@ -97,6 +125,7 @@ export function upsertFromAnalysis(input: UpsertApplicationInput): JobApplicatio
   const apps = loadApplications();
   const now = new Date().toISOString();
   const existing = apps.find((a) => sameUrl(a.url, input.url));
+  const categories = normalizeCategories(input.categories);
 
   if (existing) {
     const next: JobApplication = {
@@ -109,6 +138,9 @@ export function upsertFromAnalysis(input: UpsertApplicationInput): JobApplicatio
       strengths: input.strengths,
       missingKeywords: input.missingKeywords,
       interviewTips: input.interviewTips?.length ? input.interviewTips : existing.interviewTips,
+      categories: categories?.length ? categories : existing.categories,
+      fetchStatus: "ready",
+      fetchError: undefined,
       analyzedAt: now,
       updatedAt: now,
       hasSnapshot: existing.hasSnapshot || hasCvSnapshot(existing.id),
@@ -131,6 +163,8 @@ export function upsertFromAnalysis(input: UpsertApplicationInput): JobApplicatio
     analyzedAt: now,
     updatedAt: now,
     interviewTips: input.interviewTips,
+    categories,
+    fetchStatus: "ready",
   };
   saveApplications([created, ...apps]);
   return created;
@@ -191,12 +225,32 @@ export function updateApplication(patch: UpdateApplicationPatch): JobApplication
   if (patch.learnedKeywords === null) learnedKeywords = undefined;
   else if (Array.isArray(patch.learnedKeywords)) learnedKeywords = patch.learnedKeywords;
 
+  let categories = current.categories;
+  if ("categories" in patch) {
+    categories = patch.categories?.length
+      ? patch.categories.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 8)
+      : undefined;
+  }
+
+  let fetchStatus = current.fetchStatus;
+  if (patch.fetchStatus) fetchStatus = patch.fetchStatus;
+
+  let fetchError = current.fetchError;
+  if ("fetchError" in patch) {
+    fetchError = patch.fetchError ? String(patch.fetchError) : undefined;
+  }
+
   const next: JobApplication = {
     ...current,
     status: patch.status ?? current.status,
     notes: patch.notes ?? current.notes,
     jobTitle: patch.jobTitle ?? current.jobTitle,
     company: patch.company ?? current.company,
+    summary: patch.summary ?? current.summary,
+    matchScore:
+      typeof patch.matchScore === "number"
+        ? Math.max(0, Math.min(100, Math.round(patch.matchScore)))
+        : current.matchScore,
     appliedAt,
     followUpAt,
     interviewAt,
@@ -206,12 +260,49 @@ export function updateApplication(patch: UpdateApplicationPatch): JobApplication
     packageFolder,
     rejectionNote,
     learnedKeywords,
+    categories,
+    fetchStatus,
+    fetchError,
     updatedAt: now,
   };
 
   apps[idx] = next;
   saveApplications(apps);
   return next;
+}
+
+/** Create a lightweight listing row from URL (no CV match yet). */
+export function createListingFromUrl(url: string): JobApplication {
+  const apps = loadApplications();
+  const trimmed = url.trim();
+  const existing = apps.find((a) => sameUrl(a.url, trimmed));
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  let host = "ilan";
+  try {
+    host = new URL(trimmed).hostname.replace(/^www\./, "");
+  } catch {
+    /* keep */
+  }
+
+  const created: JobApplication = {
+    id: createId(),
+    url: trimmed,
+    jobTitle: host,
+    company: "",
+    matchScore: 0,
+    status: "saved",
+    summary: "",
+    strengths: [],
+    missingKeywords: [],
+    notes: "",
+    analyzedAt: now,
+    updatedAt: now,
+    fetchStatus: "pending",
+  };
+  saveApplications([created, ...apps]);
+  return created;
 }
 
 export function deleteApplication(id: string): boolean {

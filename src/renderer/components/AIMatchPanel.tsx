@@ -28,6 +28,8 @@ interface Props {
   onToast: (message: string) => void;
   onLoadSnapshot: (cv: CVData) => void;
   onAppsChanged?: () => void;
+  /** Prefill URL when opening from İlanlar → Eşleştir. */
+  initialUrl?: string | null;
 }
 
 export function AIMatchPanel({
@@ -47,6 +49,7 @@ export function AIMatchPanel({
   onToast,
   onLoadSnapshot,
   onAppsChanged,
+  initialUrl,
 }: Props) {
   const { t } = useLocale();
   const [url, setUrl] = useState("");
@@ -68,6 +71,12 @@ export function AIMatchPanel({
   const [shortBusy, setShortBusy] = useState(false);
   const [bankBusy, setBankBusy] = useState(false);
   const [interviewQs, setInterviewQs] = useState<InterviewQuestion[]>([]);
+
+  useEffect(() => {
+    if (open && initialUrl?.trim()) {
+      setUrl(initialUrl.trim());
+    }
+  }, [open, initialUrl]);
 
   const selectedCount = useMemo(() => selected.size, [selected]);
   const hasJobCard = Boolean(
@@ -454,7 +463,7 @@ export function AIMatchPanel({
                               item.severity === "pass"
                                 ? "text-[var(--good)]"
                                 : item.severity === "warn"
-                                  ? "text-[#c49a4a]"
+                                  ? "text-[var(--warn)]"
                                   : "text-[var(--danger)]"
                             }
                           >
@@ -474,7 +483,8 @@ export function AIMatchPanel({
           <div className="job-match-main scroll-thin">
             {!analysis ? (
               <div className="job-match-empty">
-                <p className="display m-0 text-lg font-semibold sm:text-xl">{t("jobMatch")}</p>
+                <p className="display m-0 text-lg font-semibold sm:text-xl">{t("jobMatchEmptyTitle")}</p>
+                <p className="mt-2 mb-0 text-sm text-[var(--ink-soft)]">{t("jobMatchEmptyBody")}</p>
               </div>
             ) : (
               <div className="job-match-columns">
@@ -497,8 +507,8 @@ export function AIMatchPanel({
                   </div>
                 </section>
 
-                <section className="job-match-col space-y-3">
-                  <div className="rounded-[var(--radius-sm)] border border-[var(--line)] p-3 space-y-2 sm:p-4">
+                <section className="job-match-col space-y-4">
+                  <div className="space-y-2">
                     <h3 className="display m-0 text-base font-semibold sm:text-lg">{t("coverLetter")}</h3>
                     <label className="block text-xs">
                       <span className="mb-1 block text-[var(--ink-soft)]">{t("coverTone")}</span>
@@ -543,7 +553,7 @@ export function AIMatchPanel({
                     )}
                   </div>
 
-                  <div className="rounded-[var(--radius-sm)] border border-[var(--line)] p-3 space-y-2 sm:p-4">
+                  <div className="space-y-2 border-t border-[var(--line)] pt-4">
                     <h3 className="display m-0 text-base font-semibold">{t("adaptLanguage")}</h3>
                     <div className="grid grid-cols-2 gap-2">
                       <button
@@ -597,7 +607,7 @@ export function AIMatchPanel({
                     )}
                   </div>
 
-                  <div className="rounded-[var(--radius-sm)] border border-[var(--line)] p-3 space-y-2 sm:p-4">
+                  <div className="space-y-2 border-t border-[var(--line)] pt-4">
                     <h3 className="display m-0 text-base font-semibold">{t("packageActions")}</h3>
                     <div className="grid gap-2 sm:grid-cols-2">
                       <button
@@ -701,11 +711,7 @@ function ChipList({
         {items.map((item) => (
           <span
             key={item}
-            className={`rounded-[8px] px-2 py-1 text-xs ${
-              tone === "good"
-                ? "bg-[color-mix(in_srgb,var(--good)_14%,transparent)] text-[var(--good)]"
-                : "bg-[rgba(138,90,18,0.14)] text-[#c49a4a]"
-            }`}
+            className={`chip ${tone === "good" ? "chip-good" : "chip-warn"}`}
           >
             {item}
           </span>
@@ -732,7 +738,7 @@ function BulletList({
         {items.map((item) => (
           <li
             key={item}
-            className={tone === "good" ? "marker:text-[var(--good)]" : "marker:text-[#c49a4a]"}
+            className={tone === "good" ? "marker:text-[var(--good)]" : "marker:text-[var(--warn)]"}
           >
             {item}
           </li>

@@ -8,6 +8,9 @@ import {
   type AtsCheckRequest,
   type CoverLetterRequest,
   type ExportIcsRequest,
+  type IngestJobProgress,
+  type IngestJobUrlItem,
+  type IngestJobUrlsRequest,
   type PackageExportApiRequest,
   type SnapshotSaveRequest,
 } from "../shared/ipc";
@@ -31,7 +34,7 @@ import {
 import { clearSessionGeminiApiKey } from "./geminiSession";
 import { exportHtml, exportPdf, exportTxt } from "./export";
 import { fetchJobText } from "./jobFetch";
-import { analyzeWithGemini, rewriteKeywordsWithGemini } from "./gemini";
+import { analyzeWithGemini, categorizeJobListing, rewriteKeywordsWithGemini } from "./gemini";
 import { adaptCvLanguage } from "./adaptLanguage";
 import { generateInterviewBank, shortenCvForJob } from "./shortCv";
 import { generateCoverLetter } from "./coverLetter";
@@ -41,12 +44,18 @@ import { runAtsCheck } from "../shared/ats";
 import { launchLegacyApp } from "./legacy";
 import { importCVFromFile } from "./cvImport";
 import {
+  createListingFromUrl,
   deleteApplication,
   loadApplications,
   updateApplication,
   upsertFromAnalysis,
 } from "./applicationsStore";
-import { buildInterviewIcs, collectLearnedKeywords, type UpdateApplicationPatch } from "../shared/tracker";
+import {
+  buildInterviewIcs,
+  collectLearnedKeywords,
+  parseJobUrls,
+  type UpdateApplicationPatch,
+} from "../shared/tracker";
 
 dotenv();
 
@@ -286,6 +295,129 @@ function registerIpc() {
   ipcMain.handle(IPC.appsLoad, () => loadApplications());
   ipcMain.handle(IPC.appsUpdate, (_e, patch: UpdateApplicationPatch) => updateApplication(patch));
   ipcMain.handle(IPC.appsDelete, (_e, id: string) => ({ ok: deleteApplication(id) }));
+  ipcMain.handle(IPC.appsIngestUrls, async (event, payload: IngestJobUrlsRequest) => {
+    const urls = parseJobUrls(String(payload?.raw ?? ""));
+    if (!urls.length) {
+      return { ok: false, items: [], error: "No valid http(s) URLs found." };
+    }
+
+    const hasKey = Boolean(getGeminiApiKey());
+    const items: IngestJobUrlItem[] = [];
+
+    for (let index = 0; index < urls.length; index++) {
+      const url = urls[index];
+      const existed = loadApplications().some((a) => {
+        try {
+          return (
+            new URL(a.url).href.replace(/\/$/, "").toLowerCase() ===
+            new URL(url).href.replace(/\/$/, "").toLowerCase()
+          );
+        } catch {
+          return a.url.trim().toLowerCase() === url.trim().toLowerCase();
+        }
+      });
+      const listing = createListingFromUrl(url);
+      const created = !existed;
+
+      updateApplication({ id: listing.id, fetchStatus: "fetching", fetchError: null });
+      const progressFetching: IngestJobProgress = {
+        index,
+        total: urls.length,
+        url,
+        id: listing.id,
+        fetchStatus: "fetching",
+      };
+      event.sender.send(IPC.appsIngestProgress, progressFetching);
+
+      try {
+        const fetched = await fetchJobText(url);
+        if (!fetched.ok || !fetched.text) {
+          const status = fetched.blocked ? "blocked" : "error";
+          const error = fetched.error || "Fetch failed";
+          updateApplication({
+            id: listing.id,
+            fetchStatus: status,
+            fetchError: error,
+          });
+          const item: IngestJobUrlItem = {
+            url,
+            id: listing.id,
+            fetchStatus: status,
+            error,
+            created,
+          };
+          items.push(item);
+          event.sender.send(IPC.appsIngestProgress, {
+            index,
+            total: urls.length,
+            url,
+            id: listing.id,
+            fetchStatus: status,
+            error,
+          } satisfies IngestJobProgress);
+          continue;
+        }
+
+        if (hasKey) {
+          try {
+            const meta = await categorizeJobListing(fetched.text);
+            updateApplication({
+              id: listing.id,
+              jobTitle: meta.jobTitle || listing.jobTitle,
+              company: meta.company || listing.company,
+              summary: meta.summary || fetched.text.slice(0, 280),
+              categories: meta.categories.length ? meta.categories : null,
+              fetchStatus: "ready",
+              fetchError: null,
+            });
+          } catch (err) {
+            updateApplication({
+              id: listing.id,
+              summary: fetched.text.slice(0, 280),
+              fetchStatus: "ready",
+              fetchError: err instanceof Error ? err.message : String(err),
+            });
+          }
+        } else {
+          updateApplication({
+            id: listing.id,
+            summary: fetched.text.slice(0, 280),
+            fetchStatus: "ready",
+            fetchError: "API key missing — listing text saved without categories",
+          });
+        }
+
+        const item: IngestJobUrlItem = {
+          url,
+          id: listing.id,
+          fetchStatus: "ready",
+          created,
+        };
+        items.push(item);
+        event.sender.send(IPC.appsIngestProgress, {
+          index,
+          total: urls.length,
+          url,
+          id: listing.id,
+          fetchStatus: "ready",
+        } satisfies IngestJobProgress);
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        updateApplication({ id: listing.id, fetchStatus: "error", fetchError: error });
+        items.push({ url, id: listing.id, fetchStatus: "error", error, created });
+        event.sender.send(IPC.appsIngestProgress, {
+          index,
+          total: urls.length,
+          url,
+          id: listing.id,
+          fetchStatus: "error",
+          error,
+        } satisfies IngestJobProgress);
+      }
+    }
+
+    return { ok: true, items };
+  });
   ipcMain.handle(IPC.openPath, async (_e, targetPath: string) => {
     try {
       if (!targetPath || !fs.existsSync(targetPath)) {
